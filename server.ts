@@ -5,11 +5,15 @@ import multer from 'multer';
 import { createClient } from '@supabase/supabase-js';
 import { v4 as uuidv4 } from 'uuid';
 import dotenv from 'dotenv';
+import { GoogleGenAI } from "@google/genai";
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+// Gemini Setup
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 // Supabase Setup
 const supabaseUrl = process.env.SUPABASE_URL || '';
@@ -23,6 +27,27 @@ const upload = multer({
 });
 
 app.use(express.json());
+
+// API: Gemini Search Proxy
+app.post('/api/search', async (req, res) => {
+  try {
+    const { query } = req.body;
+    if (!query) return res.status(400).json({ error: 'Query is required' });
+
+    const response = await ai.models.generateContent({
+      model: "gemini-3-flash-preview",
+      contents: `Proporciona una BREVE DESCRIPCIÓN (máximo 3 líneas) de quién es la creadora o personalidad conocida llamada: ${query}. 
+      Enfócate en su carrera, plataformas principales y por qué es conocida. 
+      Si no conoces a la persona, indica que es una creadora emergente o independiente.`,
+    });
+
+    const text = response.text || "No hay información disponible sobre esta creadora.";
+    res.json({ text });
+  } catch (err) {
+    console.error('Gemini search error:', err);
+    res.status(500).json({ error: 'Error en el motor de búsqueda' });
+  }
+});
 
 // API: Obtener contenido
 app.get('/api/content', async (req, res) => {
@@ -113,6 +138,7 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), 'dist');
+    console.log(`Serving production build from: ${distPath}`);
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
